@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelCam Studio Pro - AR Filters & Stickers</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#eef2ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-brand-500 selection:text-white">
+
+    <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 shadow-md flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <div class="bg-brand-600 p-2 rounded-lg text-white font-bold text-lg">🎩</div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white">PixelCam Studio Pro</h1>
+                <p class="text-xs text-slate-400">Pemrosesan Citra, Transformasi, Resize, Crop & AR Stiker</p>
+            </div>
+        </div>
+        <button id="downloadBtn" onclick="downloadImage()" disabled class="bg-slate-700 text-slate-400 font-semibold py-2 px-4 rounded-lg cursor-not-allowed transition duration-200 flex items-center gap-2">
+            📥 Unduh Foto
+        </button>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+        
+        <!-- Sidebar Kontrol -->
+        <div class="lg:col-span-1 bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-6 shadow-xl max-h-[85vh] overflow-y-auto">
+            
+            <div class="space-y-3">
+                <label class="block text-sm font-semibold text-slate-300">Sumber Media</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="startCamera()" class="bg-brand-600 hover:bg-brand-700 text-white py-2 px-3 rounded-lg text-xs font-semibold transition text-center shadow">📹 Buka Kamera</button>
+                    <button onclick="document.getElementById('uploadImage').click()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 py-2 px-3 rounded-lg text-xs font-semibold transition text-center">📁 Unggah File</button>
+                    <input type="file" id="uploadImage" accept="image/*" class="hidden"/>
+                </div>
+                <button id="captureBtn" onclick="captureSnapshot()" disabled class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg cursor-not-allowed transition duration-200 text-xs shadow">
+                    📸 Ambil Foto (Snapshot)
+                </button>
+            </div>
+
+            <div class="space-y-3 pt-2 border-t border-slate-700">
+                <label class="block text-sm font-semibold text-slate-300">Stiker AR (Topi & Kumis)</label>
+                <div class="grid grid-cols-2 gap-2 text-xs font-medium">
+                    <button onclick="toggleSticker('hat')" id="hatBtn" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left flex items-center gap-1">🎩 Topi: <span id="hatStatus" class="text-rose-400">Off</span></button>
+                    <button onclick="toggleSticker('mustache')" id="mustacheBtn" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left flex items-center gap-1">🥸 Kumis: <span id="mustacheStatus" class="text-rose-400">Off</span></button>
+                </div>
+            </div>
+
+            <div class="space-y-3 pt-2 border-t border-slate-700">
+                <label class="block text-sm font-semibold text-slate-300">Resize & Crop</label>
+                
+                <div class="bg-slate-900/50 border border-slate-700 p-2.5 rounded-xl space-y-2">
+                    <span class="text-xs text-slate-300 font-medium block">Ubah Ukuran (Resize)</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-slate-400">Lebar (px)</label>
+                            <input type="number" id="resizeWidth" class="w-full bg-slate-800 border border-slate-700 text-xs rounded px-2 py-1 text-white" placeholder="Auto">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400">Tinggi (px)</label>
+                            <input type="number" id="resizeHeight" class="w-full bg-slate-800 border border-slate-700 text-xs rounded px-2 py-1 text-white" placeholder="Auto">
+                        </div>
+                    </div>
+                    <button onclick="applyResize()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-1.5 rounded text-xs font-medium transition">Terapkan Resize</button>
+                </div>
+
+                <div class="bg-slate-900/50 border border-slate-700 p-2.5 rounded-xl space-y-2">
+                    <span class="text-xs text-slate-300 font-medium block">Potong Gambar (Crop Center)</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-slate-400">Lebar Crop</label>
+                            <input type="number" id="cropWidth" class="w-full bg-slate-800 border border-slate-700 text-xs rounded px-2 py-1 text-white" placeholder="300">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400">Tinggi Crop</label>
+                            <input type="number" id="cropHeight" class="w-full bg-slate-800 border border-slate-700 text-xs rounded px-2 py-1 text-white" placeholder="300">
+                        </div>
+                    </div>
+                    <button onclick="applyCrop()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-1.5 rounded text-xs font-medium transition">Terapkan Crop Center</button>
+                </div>
+            </div>
+
+            <div class="space-y-2 pt-2 border-t border-slate-700">
+                <label class="block text-sm font-semibold text-slate-300">Transformasi Geometri</label>
+                <div class="grid grid-cols-2 gap-2 text-xs font-medium">
+                    <button onclick="transformGeometry('rotateCW')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">🔄 Putar 90° CW</button>
+                    <button onclick="transformGeometry('rotateCCW')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">🔄 Putar 90° CCW</button>
+                    <button onclick="transformGeometry('flipH')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">↔️ Flip Horizontal</button>
+                    <button onclick="transformGeometry('flipV')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">↕️ Flip Vertikal</button>
+                </div>
+            </div>
+
+            <div class="space-y-2 pt-2 border-t border-slate-700">
+                <label class="block text-sm font-semibold text-slate-300">Pilihan Filter & Efek</label>
+                <div class="grid grid-cols-2 gap-2 text-xs font-medium">
+                    <button onclick="applyFilter('original')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">✨ Normal</button>
+                    <button onclick="applyFilter('grayscale')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">🔘 Grayscale</button>
+                    <button onclick="applyFilter('blackwhite')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">⚫ Black & White</button>
+                    <button onclick="applyFilter('threshold')" class="bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2 px-2 rounded-lg transition text-left shadow col-span-2">🔲 Threshold Segment</button>
+                    <button onclick="applyFilter('bokeh')" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-2 rounded-lg transition text-left shadow col-span-2">✨ Efek Bokeh (Blur BG)</button>
+                    <button onclick="applyFilter('invert')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">🔄 Invert</button>
+                    <button onclick="applyFilter('sepia')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">📜 Sepia</button>
+                    <button onclick="applyFilter('vintage')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">📸 Vintage</button>
+                    <button onclick="applyFilter('warm')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">🔥 Warm Tone</button>
+                    <button onclick="applyFilter('cool')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">❄️ Cool Tone</button>
+                    <button onclick="applyFilter('comic')" class="bg-slate-700 hover:bg-slate-600 py-2 px-2 rounded-lg transition text-left">🎨 Posterize</button>
+                </div>
+            </div>
+
+            <div class="space-y-4 pt-2 border-t border-slate-700">
+                <label class="block text-sm font-semibold text-slate-300">Pengaturan Detail</label>
+                
+                <div class="bg-slate-900/50 border border-slate-700 p-2.5 rounded-xl space-y-1">
+                    <div class="flex justify-between text-xs text-slate-300 font-medium">
+                        <span>Threshold Value</span>
+                        <span id="thresholdVal">128</span>
+                    </div>
+                    <input type="range" id="thresholdRange" min="0" max="255" value="128" oninput="updateAdjustments()" class="w-full accent-brand-500 bg-slate-700 rounded-lg h-2 cursor-pointer">
+                </div>
+
+                <div class="bg-slate-900/50 border border-slate-700 p-2.5 rounded-xl space-y-1">
+                    <div class="flex justify-between text-xs text-slate-300 font-medium">
+                        <span>Kecerahan (Brightness)</span>
+                        <span id="brightnessVal">0</span>
+                    </div>
+                    <input type="range" id="brightnessRange" min="-100" max="100" value="0" oninput="updateAdjustments()" class="w-full accent-brand-500 bg-slate-700 rounded-lg h-2 cursor-pointer">
+                </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-700">
+                <button onclick="resetImage()" class="w-full bg-rose-900/40 hover:bg-rose-900/70 text-rose-300 border border-rose-800/50 py-2 px-3 rounded-lg text-xs font-medium transition text-center">Reset Pengaturan</button>
+            </div>
+
+        </div>
+
+        <div class="lg:col-span-3 bg-slate-800 border border-slate-700 rounded-2xl p-6 flex flex-col items-center justify-center min-h-[500px] shadow-xl relative overflow-hidden">
+            
+            <div id="placeholder" class="text-center space-y-3">
+                <div class="text-5xl">📷</div>
+                <p class="text-slate-400 text-sm">Klik tombol <span class="text-brand-400 font-semibold">"Buka Kamera"</span> atau unggah foto untuk mulai memproses citra.</p>
+            </div>
+
+            <video id="webcamVideo" autoplay playsinline class="hidden max-w-full max-h-[550px] rounded-lg shadow-2xl object-contain"></video>
+            
+            <div id="canvasContainer" class="hidden relative max-w-full max-h-[600px] overflow-auto flex justify-center items-center">
+                <canvas id="imageCanvas" class="shadow-2xl rounded-lg max-w-full h-auto object-contain"></canvas>
+            </div>
+
+            <div id="errorMessage" class="hidden text-rose-400 text-sm text-center mt-4 bg-rose-950/50 p-3 rounded-lg border border-rose-800"></div>
+
+        </div>
+
+    </main>
+
+    <script>
+        const videoElement = document.getElementById('webcamVideo');
+        const uploadInput = document.getElementById('uploadImage');
+        const canvas = document.getElementById('imageCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const placeholder = document.getElementById('placeholder');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const errorMessage = document.getElementById('errorMessage');
+
+        const thresholdRange = document.getElementById('thresholdRange');
+        const thresholdVal = document.getElementById('thresholdVal');
+        const brightnessRange = document.getElementById('brightnessRange');
+        const brightnessVal = document.getElementById('brightnessVal');
+
+        let mediaStream = null;
+        let activeImageSource = null; 
+        let staticImage = null;
+        let currentFilter = 'original';
+        let isCaptured = false;
+        let animationFrameId = null;
+
+        // AR Stickers State
+        let showHat = false;
+        let showMustache = false;
+
+        function toggleSticker(type) {
+            if (type === 'hat') {
+                showHat = !showHat;
+                document.getElementById('hatStatus').innerText = showHat ? 'On' : 'Off';
+                document.getElementById('hatStatus').className = showHat ? 'text-emerald-400 font-semibold' : 'text-rose-400';
+            } else if (type === 'mustache') {
+                showMustache = !showMustache;
+                document.getElementById('mustacheStatus').innerText = showMustache ? 'On' : 'Off';
+                document.getElementById('mustacheStatus').className = showMustache ? 'text-emerald-400 font-semibold' : 'text-rose-400';
+            }
+
+            if (activeImageSource === 'static' && staticImage) {
+                renderStaticImagePipeline();
+            }
+        }
+
+        async function startCamera() {
+            stopCamera();
+            hideError();
+            currentFilter = 'original';
+            isCaptured = false;
+
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 640 }, height: { ideal: 480 } }, 
+                    audio: false 
+                });
+                videoElement.srcObject = mediaStream;
+                videoElement.classList.remove('hidden');
+                placeholder.classList.add('hidden');
+                canvasContainer.classList.add('hidden');
+                
+                captureBtn.disabled = false;
+                captureBtn.className = "w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg cursor-pointer transition duration-200 text-xs shadow";
+                downloadBtn.disabled = true;
+                downloadBtn.className = "bg-slate-700 text-slate-400 font-semibold py-2 px-4 rounded-lg cursor-not-allowed transition duration-200 flex items-center gap-2";
+
+                activeImageSource = 'video';
+                processLiveVideoFrame();
+            } catch (err) {
+                showError("Gagal mengakses kamera. Pastikan izin kamera aktif pada browser.");
+                console.error(err);
+            }
+        }
+
+        function stopCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            videoElement.classList.add('hidden');
+        }
+
+        function processLiveVideoFrame() {
+            if (activeImageSource !== 'video' || !mediaStream) return;
+
+            if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
+                const targetW = 400;
+                const targetH = Math.round((videoElement.videoHeight / videoElement.videoWidth) * targetW);
+
+                if (canvas.width !== targetW || canvas.height !== targetH) {
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                }
+
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                applyPixelFiltersAndAdjustments();
+                drawARStickers();
+                
+                canvasContainer.classList.remove('hidden');
+            }
+            animationFrameId = requestAnimationFrame(processLiveVideoFrame);
+        }
+
+        function captureSnapshot() {
+            if (activeImageSource !== 'video') return;
+
+            cancelAnimationFrame(animationFrameId);
+            stopCamera();
+
+            activeImageSource = 'static';
+            isCaptured = true;
+
+            const dataUrl = canvas.toDataURL('image/png');
+            const img = new Image();
+            img.onload = function() {
+                staticImage = img;
+                renderStaticImagePipeline();
+            };
+            img.src = dataUrl;
+
+            captureBtn.disabled = true;
+            captureBtn.className = "w-full bg-slate-700 text-slate-400 font-semibold py-2 px-4 rounded-lg cursor-not-allowed transition duration-200 text-xs shadow";
+            downloadBtn.disabled = false;
+            downloadBtn.className = "bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2 px-4 rounded-lg cursor-pointer transition duration-200 flex items-center gap-2 shadow-lg";
+        }
+
+        uploadInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                stopCamera();
+                hideError();
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const maxDim = 500;
+                        let w = img.width;
+                        let h = img.height;
+                        if (w > maxDim || h > maxDim) {
+                            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+                            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        ctx.drawImage(img, 0, 0, w, h);
+                        
+                        staticImage = new Image();
+                        staticImage.onload = function() {
+                            activeImageSource = 'static';
+                            isCaptured = true;
+                            currentFilter = 'original';
+                            renderStaticImagePipeline();
+                        };
+                        staticImage.src = canvas.toDataURL('image/png');
+
+                        placeholder.classList.add('hidden');
+                        videoElement.classList.add('hidden');
+                        canvasContainer.classList.remove('hidden');
+                        captureBtn.disabled = true;
+                        captureBtn.className = "w-full bg-slate-700 text-slate-400 font-semibold py-2 px-4 rounded-lg cursor-not-allowed transition duration-200 text-xs shadow";
+                        downloadBtn.disabled = false;
+                        downloadBtn.className = "bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2 px-4 rounded-lg cursor-pointer transition duration-200 flex items-center gap-2 shadow-lg";
+                    }
+                    img.src = event.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function applyResize() {
+            if (activeImageSource !== 'static' || !staticImage) return;
+            const rw = parseInt(document.getElementById('resizeWidth').value);
+            const rh = parseInt(document.getElementById('resizeHeight').value);
+            if (!rw && !rh) return;
+
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            const newW = rw || Math.round((rh / canvas.height) * canvas.width);
+            const newH = rh || Math.round((rw / canvas.width) * canvas.height);
+
+            tempCanvas.width = newW;
+            tempCanvas.height = newH;
+            tempCtx.drawImage(canvas, 0, 0, newW, newH);
+
+            const newImg = new Image();
+            newImg.onload = function() {
+                staticImage = newImg;
+                canvas.width = newW;
+                canvas.height = newH;
+                renderStaticImagePipeline();
+            };
+            newImg.src = tempCanvas.toDataURL('image/png');
+        }
+
+        function applyCrop() {
+            if (activeImageSource !== 'static' || !staticImage) return;
+            const cw = parseInt(document.getElementById('cropWidth').value) || 200;
+            const ch = parseInt(document.getElementById('cropHeight').value) || 200;
+
+            const startX = Math.max(0, (canvas.width - cw) / 2);
+            const startY = Math.max(0, (canvas.height - ch) / 2);
+            const actualW = Math.min(cw, canvas.width);
+            const actualH = Math.min(ch, canvas.height);
+
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = actualW;
+            tempCanvas.height = actualH;
+
+            tempCtx.drawImage(canvas, startX, startY, actualW, actualH, 0, 0, actualW, actualH);
+
+            const newImg = new Image();
+            newImg.onload = function() {
+                staticImage = newImg;
+                canvas.width = actualW;
+                canvas.height = actualH;
+                renderStaticImagePipeline();
+            };
+            newImg.src = tempCanvas.toDataURL('image/png');
+        }
+
+        function transformGeometry(type) {
+            if (activeImageSource !== 'static' || !staticImage) return;
+
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+
+            if (type === 'rotateCW' || type === 'rotateCCW') {
+                tempCanvas.width = h;
+                tempCanvas.height = w;
+                tempCtx.save();
+                tempCtx.translate(h / 2, w / 2);
+                tempCtx.rotate((type === 'rotateCW' ? 90 : -90) * Math.PI / 180);
+                tempCtx.drawImage(canvas, -w / 2, -h / 2);
+                tempCtx.restore();
+            } else if (type === 'flipH') {
+                tempCanvas.width = w;
+                tempCanvas.height = h;
+                tempCtx.save();
+                tempCtx.translate(w, 0);
+                tempCtx.scale(-1, 1);
+                tempCtx.drawImage(canvas, 0, 0);
+                tempCtx.restore();
+            } else if (type === 'flipV') {
+                tempCanvas.width = w;
+                tempCanvas.height = h;
+                tempCtx.save();
+                tempCtx.translate(0, h);
+                tempCtx.scale(1, -1);
+                tempCtx.drawImage(canvas, 0, 0);
+                tempCtx.restore();
+            }
+
+            const newImg = new Image();
+            newImg.onload = function() {
+                staticImage = newImg;
+                canvas.width = tempCanvas.width;
+                canvas.height = tempCanvas.height;
+                renderStaticImagePipeline();
+            };
+            newImg.src = tempCanvas.toDataURL('image/png');
+        }
+
+        function applyPixelFiltersAndAdjustments() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const data = imgData.data;
+
+            let thresholdLimit = parseInt(thresholdRange.value);
+            let brightnessOffset = parseInt(brightnessRange.value);
+
+            if (currentFilter === 'bokeh') {
+                const blurredData = new Uint8ClampedArray(data);
+                const radius = 4;
+                for (let y = radius; y < height - radius; y++) {
+                    for (let x = radius; x < width - radius; x++) {
+                        let rSum = 0, gSum = 0, bSum = 0, count = 0;
+                        for (let dy = -radius; dy <= radius; dy++) {
+                            for (let dx = -radius; dx <= radius; dx++) {
+                                let nx = x + dx;
+                                let ny = y + dy;
+                                let ni = (ny * width + nx) * 4;
+                                rSum += data[ni];
+                                gSum += data[ni + 1];
+                                bSum += data[ni + 2];
+                                count++;
+                            }
+                        }
+                        let bi = (y * width + x) * 4;
+                        blurredData[bi] = rSum / count;
+                        blurredData[bi + 1] = gSum / count;
+                        blurredData[bi + 2] = bSum / count;
+                    }
+                }
+
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        let i = (y * width + x) * 4;
+                        let r = data[i];
+                        let g = data[i + 1];
+                        let b = data[i + 2];
+
+                        let distX = x - centerX;
+                        let distY = y - centerY;
+                        let distFromCenter = Math.sqrt(distX * distX + distY * distY);
+                        let weight = distFromCenter / maxDist;
+
+                        if (weight < 0.45) {
+                            data[i] = r;
+                            data[i + 1] = g;
+                            data[i + 2] = b;
+                        } else {
+                            data[i] = blurredData[i];
+                            data[i + 1] = blurredData[i + 1];
+                            data[i + 2] = blurredData[i + 2];
+                        }
+                    }
+                }
+                ctx.putImageData(imgData, 0, 0);
+                return;
+            }
+
+            for (let i = 0; i < data.length; i += 4) {
+                let r = data[i];
+                let g = data[i + 1];
+                let b = data[i + 2];
+
+                if (brightnessOffset !== 0) {
+                    r = Math.min(255, Math.max(0, r + brightnessOffset));
+                    g = Math.min(255, Math.max(0, g + brightnessOffset));
+                    b = Math.min(255, Math.max(0, b + brightnessOffset));
+                }
+
+                if (currentFilter === 'grayscale') {
+                    let avg = 0.299 * r + 0.587 * g + 0.114 * b;
+                    r = g = b = avg;
+                } else if (currentFilter === 'blackwhite') {
+                    let avg = 0.299 * r + 0.587 * g + 0.114 * b;
+                    let val = avg > 127 ? 255 : 0;
+                    r = g = b = val;
+                } else if (currentFilter === 'threshold') {
+                    let avg = 0.299 * r + 0.587 * g + 0.114 * b;
+                    let val = avg >= thresholdLimit ? 255 : 0;
+                    r = g = b = val;
+                } else if (currentFilter === 'invert') {
+                    r = 255 - r;
+                    g = 255 - g;
+                    b = 255 - b;
+                } else if (currentFilter === 'sepia') {
+                    let tr = (r * 0.393) + (g * 0.769) + (b * 0.189);
+                    let tg = (r * 0.349) + (g * 0.686) + (b * 0.168);
+                    let tb = (r * 0.272) + (g * 0.534) + (b * 0.131);
+                    r = Math.min(255, tr);
+                    g = Math.min(255, tg);
+                    b = Math.min(255, tb);
+                } else if (currentFilter === 'vintage') {
+                    r = Math.min(255, (r * 0.9) + 30);
+                    g = Math.min(255, (g * 0.8) + 15);
+                    b = Math.min(255, (b * 0.6));
+                } else if (currentFilter === 'warm') {
+                    r = Math.min(255, r + 25);
+                    b = Math.max(0, b - 20);
+                } else if (currentFilter === 'cool') {
+                    r = Math.max(0, r - 20);
+                    b = Math.min(255, b + 30);
+                } else if (currentFilter === 'comic') {
+                    r = Math.floor(r / 64) * 64;
+                    g = Math.floor(g / 64) * 64;
+                    b = Math.floor(b / 64) * 64;
+                }
+
+                data[i] = r;
+                data[i + 1] = g;
+                data[i + 2] = b;
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        function drawARStickers() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const centerX = w / 2;
+            const centerY = h / 2;
+
+            if (showHat) {
+                ctx.save();
+                ctx.fillStyle = '#1e293b';
+                ctx.strokeStyle = '#0f172a';
+                ctx.lineWidth = 3;
+
+                // Draw Top Hat near upper center
+                const hatW = w * 0.35;
+                const hatH = h * 0.22;
+                const hatX = centerX - (hatW / 2);
+                const hatY = centerY - (h * 0.32);
+
+                // Brim
+                ctx.beginPath();
+                ctx.ellipse(centerX, hatY + hatH, hatW * 0.6, hatH * 0.2, 0, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+
+                // Cylindrical Body
+                ctx.fillRect(hatX + (hatW * 0.15), hatY - (hatH * 0.6), hatW * 0.7, hatH * 1.2);
+                ctx.strokeRect(hatX + (hatW * 0.15), hatY - (hatH * 0.6), hatW * 0.7, hatH * 1.2);
+
+                // Ribbon
+                ctx.fillStyle = '#dc2626';
+                ctx.fillRect(hatX + (hatW * 0.15), hatY + (hatH * 0.3), hatW * 0.7, hatH * 0.25);
+
+                ctx.restore();
+            }
+
+            if (showMustache) {
+                ctx.save();
+                ctx.fillStyle = '#0f172a';
+
+                const mWidth = w * 0.28;
+                const mHeight = h * 0.08;
+                const mX = centerX;
+                const mY = centerY + (h * 0.08);
+
+                ctx.beginPath();
+                ctx.moveTo(mX, mY);
+                // Draw classic handlebar mustache shape
+                ctx.bezierCurveTo(mX + mWidth * 0.3, mY - mHeight * 1.2, mX + mWidth * 0.5, mY + mHeight * 0.5, mX + mWidth * 0.5, mY);
+                ctx.bezierCurveTo(mX + mWidth * 0.5, mY + mHeight * 1.5, mX + mWidth * 0.1, mY + mHeight * 0.8, mX, mY + mHeight * 0.4);
+                ctx.bezierCurveTo(mX - mWidth * 0.1, mY + mHeight * 0.8, mX - mWidth * 0.5, mY + mHeight * 1.5, mX - mWidth * 0.5, mY);
+                ctx.bezierCurveTo(mX - mWidth * 0.5, mY + mHeight * 0.5, mX - mWidth * 0.3, mY - mHeight * 1.2, mX, mY);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        function renderStaticImagePipeline() {
+            if (!staticImage) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(staticImage, 0, 0);
+            applyPixelFiltersAndAdjustments();
+            drawARStickers();
+        }
+
+        function applyFilter(filterName) {
+            currentFilter = filterName;
+            if (activeImageSource === 'static' && staticImage) {
+                renderStaticImagePipeline();
+            }
+        }
+
+        function updateAdjustments() {
+            thresholdVal.innerText = thresholdRange.value;
+            brightnessVal.innerText = brightnessRange.value;
+            if (activeImageSource === 'static' && staticImage) {
+                renderStaticImagePipeline();
+            }
+        }
+
+        function resetImage() {
+            thresholdRange.value = 128;
+            brightnessRange.value = 0;
+            thresholdVal.innerText = '128';
+            brightnessVal.innerText = '0';
+            currentFilter = 'original';
+            showHat = false;
+            showMustache = false;
+            document.getElementById('hatStatus').innerText = 'Off';
+            document.getElementById('hatStatus').className = 'text-rose-400';
+            document.getElementById('mustacheStatus').innerText = 'Off';
+            document.getElementById('mustacheStatus').className = 'text-rose-400';
+            if (activeImageSource === 'static' && staticImage) {
+                renderStaticImagePipeline();
+            }
+        }
+
+        function downloadImage() {
+            if (activeImageSource !== 'static' || !isCaptured) return;
+            const link = document.createElement('a');
+            link.download = 'processed-image-ar.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function showError(msg) {
+            errorMessage.innerText = msg;
+            errorMessage.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorMessage.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
