@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Deteksi Objek Real-Time dengan Audio Suara</title>
+    <!-- Tailwind CSS untuk styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TensorFlow.js dan Model COCO-SSD -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col items-center justify-center p-4 selection:bg-indigo-500 selection:text-white">
+
+    <div class="max-w-4xl w-full bg-slate-800/80 backdrop-blur-md rounded-2xl shadow-2xl p-6 border border-slate-700">
+        <!-- Judul & Deskripsi -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 mb-2">
+                AI Object Detection Studio (Voice Alert)
+            </h1>
+            <p class="text-slate-400 text-sm">
+                Deteksi objek real-time dengan notifikasi suara otomatis menyebutkan nama objek.
+            </p>
+        </div>
+
+        <!-- Status & Notifikasi Banner -->
+        <div id="notification-banner" class="mb-5 p-4 rounded-xl text-center font-medium bg-amber-500/20 border border-amber-500/30 text-amber-300 transition-all duration-300 flex items-center justify-center gap-2">
+            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-amber-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Memuat model AI, silakan tunggu...</span>
+        </div>
+
+        <!-- Video & Canvas Container -->
+        <div class="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-inner border border-slate-700 flex items-center justify-center">
+            <video id="webcam" autoplay playsinline muted class="absolute w-full h-full object-cover"></video>
+            <canvas id="canvas" class="absolute w-full h-full object-cover pointer-events-none"></canvas>
+            
+            <!-- Panduan jika kamera belum aktif -->
+            <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 text-slate-400 z-10 transition-opacity">
+                <p class="text-lg font-medium">Meminta izin dan mengaktifkan kamera...</p>
+            </div>
+        </div>
+
+        <!-- Panel Info Objek Terdeteksi -->
+        <div class="mt-6 bg-slate-900/60 p-4 rounded-xl border border-slate-700/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="w-full">
+                <h2 class="text-sm font-semibold tracking-wide uppercase text-slate-400 mb-3 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                    Objek Terdeteksi Saat Ini:
+                </h2>
+                <div id="detected-list" class="flex flex-wrap gap-2 text-sm text-slate-300 min-h-[40px] items-center">
+                    <span class="text-slate-500 italic">Belum ada objek terdeteksi.</span>
+                </div>
+            </div>
+            <!-- Toggle Suara -->
+            <div class="flex items-center gap-3 shrink-0">
+                <span class="text-xs text-slate-400 font-medium">Suara Suara (Voice):</span>
+                <button id="sound-toggle" onclick="toggleSound()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors flex items-center gap-1.5">
+                    <span>🔊 Aktif</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const notificationBanner = document.getElementById('notification-banner');
+        const detectedList = document.getElementById('detected-list');
+        const cameraLoading = document.getElementById('camera-loading');
+        const soundToggleBtn = document.getElementById('sound-toggle');
+
+        let model = undefined;
+        let soundEnabled = true;
+        let lastSpokenTime = 0;
+        let lastSpokenObject = "";
+
+        // Fungsi Toggle Suara
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            soundToggleBtn.innerHTML = soundEnabled ? "<span>🔊 Aktif</span>" : "<span>🔇 Mute</span>";
+            soundToggleBtn.className = soundEnabled 
+                ? "px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors flex items-center gap-1.5"
+                : "px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold transition-colors flex items-center gap-1.5";
+        }
+
+        // Fungsi Text-to-Speech untuk mengucapkan "terdeteksi [nama objek]"
+        function speakObject(objectName) {
+            if (!soundEnabled) return;
+            if (!('speechSynthesis' in window)) return;
+
+            const now = Date.now();
+            // Beri jeda 3 detik jika objek yang sama terdeteksi berulang, atau langsung jika objek berbeda
+            if (objectName === lastSpokenObject && now - lastSpokenTime < 3000) return;
+
+            // Terjemahan opsional atau langsung sebutkan nama objeknya
+            const textToSpeak = `terdeteksi ${objectName}`;
+            
+            // Batalkan antrean suara sebelumnya agar responsif
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(textToSpeak);
+            utterance.lang = 'id-ID'; // Set bahasa Indonesia
+            utterance.rate = 1.0; // Kecepatan normal
+            utterance.pitch = 1.0;
+
+            window.speechSynthesis.speak(utterance);
+
+            lastSpokenTime = now;
+            lastSpokenObject = objectName;
+        }
+
+        // 1. Inisialisasi Kamera Web
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+                video.srcObject = stream;
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        resolve(video);
+                    };
+                });
+            } catch (error) {
+                console.error("Gagal mengakses kamera:", error);
+                cameraLoading.innerHTML = `<p class="text-rose-400 font-medium">Gagal mengakses kamera! Pastikan izin akses kamera diaktifkan.</p>`;
+                notificationBanner.className = "mb-5 p-4 rounded-xl text-center font-medium bg-rose-500/20 border border-rose-500/30 text-rose-300 transition-all duration-300";
+                notificationBanner.innerHTML = "<span>Gagal menginisialisasi sistem kamera.</span>";
+            }
+        }
+
+        // 2. Load Model COCO-SSD
+        async function loadModel() {
+            try {
+                model = await cocoSsd.load();
+                notificationBanner.innerHTML = "<span>Model AI siap. Mengaktifkan kamera perangkat...</span>";
+                
+                await setupCamera();
+                video.play();
+                
+                cameraLoading.style.display = 'none';
+
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+
+                detectFrame();
+            } catch (error) {
+                console.error("Gagal memuat model:", error);
+                notificationBanner.className = "mb-5 p-4 rounded-xl text-center font-medium bg-rose-500/20 border border-rose-500/30 text-rose-300 transition-all duration-300";
+                notificationBanner.innerHTML = "<span>Gagal memuat model AI. Periksa koneksi internet Anda.</span>";
+                cameraLoading.style.display = 'none';
+            }
+        }
+
+        // 3. Loop Deteksi Frame
+        async function detectFrame() {
+            if (model && video.readyState === 4) {
+                const predictions = await model.detect(video);
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (predictions.length > 0) {
+                    // Ambil objek utama dengan akurasi tertinggi untuk disebutkan suaranya
+                    const primaryObject = predictions.reduce((prev, current) => (prev.score > current.score) ? prev : current);
+                    speakObject(primaryObject.class);
+
+                    notificationBanner.className = "mb-5 p-4 rounded-xl text-center font-semibold bg-rose-500/20 border border-rose-500/40 text-rose-300 shadow-lg shadow-rose-900/20 transition-all duration-300 flex items-center justify-center gap-2";
+                    notificationBanner.innerHTML = `
+                        <svg class="w-5 h-5 text-rose-400 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                        <span>PERINGATAN: ${predictions.length} Objek Terdeteksi!</span>
+                    `;
+
+                    let listHTML = "";
+                    predictions.forEach(prediction => {
+                        const [x, y, width, height] = prediction.bbox;
+                        const scorePercent = Math.round(prediction.score * 100);
+                        const label = `${prediction.class} (${scorePercent}%)`;
+
+                        ctx.strokeStyle = "#38bdf8";
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(x, y, width, height);
+
+                        ctx.fillStyle = "#38bdf8";
+                        const textWidth = ctx.measureText(label).width;
+                        const textHeight = 20;
+                        ctx.fillRect(x, y > textHeight ? y - textHeight : 0, textWidth + 12, textHeight);
+
+                        ctx.fillStyle = "#0f172a";
+                        ctx.font = "bold 13px Inter, sans-serif";
+                        ctx.fillText(label, x + 6, y > textHeight ? y - 5 : 15);
+
+                        listHTML += `<span class="bg-cyan-950/80 text-cyan-300 px-3 py-1.5 rounded-lg border border-cyan-800/60 font-medium shadow-sm flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                            ${prediction.class} <span class="text-cyan-500/80 text-xs">(${scorePercent}%)</span>
+                        </span>`;
+                    });
+                    detectedList.innerHTML = listHTML;
+
+                } else {
+                    notificationBanner.className = "mb-5 p-4 rounded-xl text-center font-medium bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 transition-all duration-300 flex items-center justify-center gap-2";
+                    notificationBanner.innerHTML = `
+                        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span>Sistem Aktif — Memantau area pandang kamera...</span>
+                    `;
+                    detectedList.innerHTML = `<span class="text-slate-500 italic">Belum ada objek terdeteksi.</span>`;
+                }
+            }
+            requestAnimationFrame(detectFrame);
+        }
+
+        window.onload = () => {
+            loadModel();
+        };
+    </script>
+</body>
+</html>
