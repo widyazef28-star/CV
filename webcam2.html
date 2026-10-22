@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Deteksi Objek & Pipeline Pengolahan Citra - OpenCV.js</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        canvas, video {
+            width: 100%;
+            height: auto;
+            border-radius: 0.5rem;
+            background-color: #0f172a;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+    <!-- Top Loading Overlay for OpenCV.js -->
+    <div id="loadingOverlay" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4">
+        <div class="relative flex items-center justify-center mb-4">
+            <div class="w-16 h-16 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+            <i class="fa-solid fa-eye absolute text-cyan-500 text-xl"></i>
+        </div>
+        <h2 class="text-xl font-bold text-slate-100">Memuat Engine Computer Vision...</h2>
+        <p id="loadingStatus" class="text-slate-400 text-sm mt-2">Mengunduh library OpenCV.js & Model Haar Cascade</p>
+    </div>
+
+    <!-- Header Navigation -->
+    <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-40 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-cyan-500/10 text-cyan-400 rounded-lg border border-cyan-500/20">
+                    <i class="fa-solid fa-camera-retro text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-none text-slate-100">VisionLab Pro</h1>
+                    <p class="text-xs text-slate-400 mt-1">Image Processing & Haar Cascade Detection Engine</p>
+                </div>
+            </div>
+
+            <!-- Mode Selector & Controls -->
+            <div class="flex items-center gap-2 bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
+                <button id="btnWebcam" onclick="setSourceMode('webcam')" class="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all bg-cyan-600 text-white shadow-sm">
+                    <i class="fa-solid fa-video"></i> Kamera Stream
+                </button>
+                <button id="btnUpload" onclick="setSourceMode('upload')" class="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-image"></i> Upload Gambar
+                </button>
+                <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+        <!-- Left Controls Sidebar -->
+        <aside class="lg:col-span-1 space-y-6 bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 h-fit">
+            
+            <!-- Source Preview Box / Hidden Video Elements -->
+            <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 block">Sumber Input</span>
+                <div class="relative bg-slate-900 rounded-lg overflow-hidden border border-slate-800 aspect-video flex items-center justify-center">
+                    <!-- Hidden elements for actual processing input -->
+                    <video id="videoElement" autoplay playsinline class="hidden"></video>
+                    <img id="imageElement" class="hidden" alt="Source">
+                    
+                    <canvas id="canvasInputPreview" class="w-full h-full object-cover"></canvas>
+                    <span id="sourceBadge" class="absolute top-2 left-2 bg-slate-950/80 text-cyan-400 border border-cyan-500/30 text-[10px] font-mono px-2 py-0.5 rounded backdrop-blur">
+                        Webcam Live
+                    </span>
+                </div>
+            </div>
+
+            <hr class="border-slate-800">
+
+            <!-- Pipeline Parameters Controls -->
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-semibold text-sm text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-cyan-400"></i> Kontrol Pipeline
+                    </h3>
+                    <button onclick="resetParameters()" class="text-xs text-slate-500 hover:text-cyan-400 transition-colors">Reset</button>
+                </div>
+
+                <!-- Step 1: Pre-Blur -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs text-slate-400">
+                        <label for="blurKernel">Gaussian Blur (Kernel)</label>
+                        <span id="blurVal" class="font-mono text-cyan-400">3 px</span>
+                    </div>
+                    <input type="range" id="blurKernel" min="1" max="15" step="2" value="3" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Step 2: Thresholding -->
+                <div class="space-y-2">
+                    <label class="text-xs text-slate-400 block">Metode Thresholding</label>
+                    <select id="threshType" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        <option value="otsu">Binary Thresholding (Otsu)</option>
+                        <option value="adaptive">Adaptive Thresholding</option>
+                        <option value="binary">Binary Manual</option>
+                        <option value="none">Tanpa Threshold (Grayscale)</option>
+                    </select>
+
+                    <div id="manualThreshContainer" class="space-y-1 pt-1">
+                        <div class="flex justify-between text-xs text-slate-400">
+                            <label for="threshVal">Nilai Threshold</label>
+                            <span id="threshValNum" class="font-mono text-cyan-400">127</span>
+                        </div>
+                        <input type="range" id="threshVal" min="0" max="255" value="127" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Step 3: Morphological Operations -->
+                <div class="space-y-2">
+                    <label class="text-xs text-slate-400 block">Operasi Morfologi</label>
+                    <select id="morphType" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        <option value="none">None (Tanpa Morfologi)</option>
+                        <option value="opening">Opening (Erosion -> Dilation)</option>
+                        <option value="closing">Closing (Dilation -> Erosion)</option>
+                        <option value="erode">Erosion (Pengikisan)</option>
+                        <option value="dilate">Dilation (Penebalan)</option>
+                    </select>
+
+                    <div class="space-y-1 pt-1">
+                        <div class="flex justify-between text-xs text-slate-400">
+                            <label for="morphKernel">Ukuran Kernel Morfologi</label>
+                            <span id="morphKernelVal" class="font-mono text-cyan-400">3x3</span>
+                        </div>
+                        <input type="range" id="morphKernel" min="1" max="15" step="2" value="3" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Step 4: Haar Cascade Detection Tuning -->
+                <div class="space-y-2 pt-2 border-t border-slate-800">
+                    <label class="text-xs font-bold text-slate-300 block uppercase tracking-wider">Haar Cascade Tuning</label>
+                    
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs text-slate-400">
+                            <label for="scaleFactor">Scale Factor</label>
+                            <span id="scaleFactorVal" class="font-mono text-cyan-400">1.1</span>
+                        </div>
+                        <input type="range" id="scaleFactor" min="1.05" max="1.5" step="0.05" value="1.1" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs text-slate-400">
+                            <label for="minNeighbors">Min Neighbors</label>
+                            <span id="minNeighborsVal" class="font-mono text-cyan-400">3</span>
+                        </div>
+                        <input type="range" id="minNeighbors" min="1" max="10" step="1" value="3" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Performance Monitor -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3 text-xs space-y-1.5">
+                <div class="flex justify-between text-slate-400">
+                    <span>Frame Rate (FPS):</span>
+                    <span id="fpsVal" class="font-mono font-bold text-emerald-400">0</span>
+                </div>
+                <div class="flex justify-between text-slate-400">
+                    <span>Waktu Proses:</span>
+                    <span id="procTimeVal" class="font-mono text-slate-300">0 ms</span>
+                </div>
+                <div class="flex justify-between text-slate-400">
+                    <span>Objek Terdeteksi:</span>
+                    <span id="detectedCount" class="font-mono font-bold text-cyan-400">0</span>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- Right Grid Views: Pipelines Visualization & Final Result -->
+        <section class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- Panel 1: Grayscale Output -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-slate-400"></span> 1. Grayscale & Blur
+                    </span>
+                    <span class="text-[10px] text-slate-500 font-mono">cv.cvtColor & GaussianBlur</span>
+                </div>
+                <div class="relative flex-1 bg-slate-950 rounded-lg overflow-hidden flex items-center justify-center">
+                    <canvas id="canvasGray"></canvas>
+                </div>
+            </div>
+
+            <!-- Panel 2: Thresholding Output -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-amber-400"></span> 2. Thresholding
+                    </span>
+                    <span id="threshBadge" class="text-[10px] text-amber-400 font-mono bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">Otsu</span>
+                </div>
+                <div class="relative flex-1 bg-slate-950 rounded-lg overflow-hidden flex items-center justify-center">
+                    <canvas id="canvasThresh"></canvas>
+                </div>
+            </div>
+
+            <!-- Panel 3: Morphological Output -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-purple-400"></span> 3. Morphological Operations
+                    </span>
+                    <span id="morphBadge" class="text-[10px] text-purple-400 font-mono bg-purple-400/10 border border-purple-400/20 px-1.5 py-0.5 rounded">None</span>
+                </div>
+                <div class="relative flex-1 bg-slate-950 rounded-lg overflow-hidden flex items-center justify-center">
+                    <canvas id="canvasMorph"></canvas>
+                </div>
+            </div>
+
+            <!-- Panel 4: Final Bounding Box Result -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 flex flex-col ring-1 ring-cyan-500/30">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-cyan-400 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span> 4. Hasil Deteksi Akhir
+                    </span>
+                    <span class="text-[10px] text-cyan-400 font-mono bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded">Haar Cascade</span>
+                </div>
+                <div class="relative flex-1 bg-slate-950 rounded-lg overflow-hidden flex items-center justify-center">
+                    <canvas id="canvasOutput"></canvas>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Notification Toast Modal -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-slate-900 border border-slate-700 text-slate-200 px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 transition-opacity opacity-0 pointer-events-none z-50">
+        <i id="toastIcon" class="fa-solid fa-circle-info text-cyan-400"></i>
+        <span id="toastMsg" class="text-xs font-medium">Notifikasi</span>
+    </div>
+
+    <!-- OpenCV.js Script Async Load -->
+    <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();" onerror="onOpenCvError();"></script>
+
+    <!-- Main Logic Script -->
+    <script>
+        // Global variables state
+        let cvReady = false;
+        let faceCascade = null;
+        let streaming = false;
+        let sourceMode = 'webcam'; // 'webcam' or 'upload'
+        
+        // Video & Canvas DOM Elements
+        const video = document.getElementById('videoElement');
+        const imgInput = document.getElementById('imageElement');
+        
+        const canvasInputPreview = document.getElementById('canvasInputPreview');
+        const canvasGray = document.getElementById('canvasGray');
+        const canvasThresh = document.getElementById('canvasThresh');
+        const canvasMorph = document.getElementById('canvasMorph');
+        const canvasOutput = document.getElementById('canvasOutput');
+
+        // OpenCV Mat Buffers
+        let srcMat, grayMat, blurMat, threshMat, morphMat, dstMat;
+        
+        // FPS & Timing Variables
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        let currentFps = 0;
+
+        // Haar Cascade Classifier XML URL (Frontal Face Alt)
+        const CASCADE_URL = 'https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml';
+
+        // Initialize OpenCV and load Cascade file into Virtual FS
+        async function onOpenCvReady() {
+            document.getElementById('loadingStatus').innerText = 'Memuat model Haar Cascade...';
+            
+            try {
+                // Download Cascade XML
+                let response = await fetch(CASCADE_URL);
+                if (!response.ok) throw new Error('Gagal mengunduh XML Haar Cascade');
+                let buffer = await response.arrayBuffer();
+                let data = new Uint8Array(buffer);
+                
+                // Write to OpenCV virtual file system
+                cv.FS_createDataFile('/', 'haarcascade_frontalface.xml', data, true, false, false);
+
+                // Load Cascade Classifier
+                faceCascade = new cv.CascadeClassifier();
+                faceCascade.load('haarcascade_frontalface.xml');
+
+                cvReady = true;
+                
+                // Hide Overlay Loading
+                const overlay = document.getElementById('loadingOverlay');
+                overlay.classList.add('opacity-0', 'transition-opacity', 'duration-500');
+                setTimeout(() => overlay.remove(), 500);
+
+                showToast('OpenCV.js & Haar Cascade siap digunakan!', 'success');
+
+                // Start Webcam default
+                startWebcam();
+                setupControlsListeners();
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('loadingStatus').innerText = 'Gagal memuat file Cascade!';
+                showToast('Gagal memuat model Haar Cascade', 'error');
+            }
+        }
+
+        function onOpenCvError() {
+            document.getElementById('loadingStatus').innerText = 'Gagal memuat OpenCV.js. Periksa koneksi internet Anda.';
+            showToast('Gagal memuat OpenCV.js', 'error');
+        }
+
+        // Setup Controls & Range listeners
+        function setupControlsListeners() {
+            document.getElementById('blurKernel').addEventListener('input', (e) => {
+                document.getElementById('blurVal').innerText = e.target.value + ' px';
+                if (sourceMode === 'upload') processImagePipeline();
+            });
+
+            document.getElementById('threshType').addEventListener('change', (e) => {
+                const manualContainer = document.getElementById('manualThreshContainer');
+                document.getElementById('threshBadge').innerText = e.target.options[e.target.selectedIndex].text.split(' ')[0];
+                if (e.target.value === 'binary') {
+                    manualContainer.classList.remove('hidden');
+                } else {
+                    manualContainer.classList.add('hidden');
+                }
+                if (sourceMode === 'upload') processImagePipeline();
+            });
+
+            document.getElementById('threshVal').addEventListener('input', (e) => {
+                document.getElementById('threshValNum').innerText = e.target.value;
+                if (sourceMode === 'upload') processImagePipeline();
+            });
+
+            document.getElementById('morphType').addEventListener('change', (e) => {
+                document.getElementById('morphBadge').innerText = e.target.value.toUpperCase();
+                if (sourceMode === 'upload') processImagePipeline();
+            });
+
+            document.getElementById('morphKernel').addEventListener('input', (e) => {
+                document.getElementById('morphKernelVal').innerText = `${e.target.value}x${e.target.value}`;
+                if (sourceMode === 'upload') processImagePipeline();
+            });
+
+            document.getElementById('scaleFactor').addEventListener('input', (e) => {
+                document.getElementById('scaleFactorVal').innerText = e.target.value;
+                if (sourceMode === 'upload') processImagePipeline();
+            });
+
+            document.getElementById('minNeighbors').addEventListener('input', (e) => {
+                document.getElementById('minNeighborsVal').innerText = e.target.value;
+                if (sourceMode === 'upload') processImagePipeline();
+            });
+
+            // Initial manual threshold container visibility
+            document.getElementById('manualThreshContainer').classList.add('hidden');
+        }
+
+        // Toggle Source Modes
+        function setSourceMode(mode) {
+            if (sourceMode === mode) return;
+            sourceMode = mode;
+
+            const btnWebcam = document.getElementById('btnWebcam');
+            const btnUpload = document.getElementById('btnUpload');
+            const sourceBadge = document.getElementById('sourceBadge');
+
+            if (mode === 'webcam') {
+                btnWebcam.className = "px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all bg-cyan-600 text-white shadow-sm";
+                btnUpload.className = "px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-slate-200";
+                sourceBadge.innerText = "Webcam Live";
+                startWebcam();
+            } else {
+                btnUpload.className = "px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all bg-cyan-600 text-white shadow-sm";
+                btnWebcam.className = "px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-slate-200";
+                sourceBadge.innerText = "File Upload";
+                stopWebcam();
+                document.getElementById('fileInput').click();
+            }
+        }
+
+        // Start Webcam Video Stream
+        async function startWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+                video.play();
+                
+                video.addEventListener('loadedmetadata', () => {
+                    streaming = true;
+                    requestAnimationFrame(processVideoFrame);
+                }, { once: true });
+
+            } catch (err) {
+                console.error("Akses Webcam ditolak atau tidak tersedia:", err);
+                showToast("Gagal mengakses webcam", "error");
+            }
+        }
+
+        // Stop Webcam Video Stream
+        function stopWebcam() {
+            streaming = false;
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+        }
+
+        // Handle Image Upload
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imgInput.src = e.target.result;
+                imgInput.onload = function() {
+                    // Draw to input canvas preview
+                    const ctx = canvasInputPreview.getContext('2d');
+                    canvasInputPreview.width = imgInput.width;
+                    canvasInputPreview.height = imgInput.height;
+                    ctx.drawImage(imgInput, 0, 0);
+
+                    // Execute Pipeline single pass
+                    processImagePipeline();
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Reset All Parameters
+        function resetParameters() {
+            document.getElementById('blurKernel').value = 3;
+            document.getElementById('blurVal').innerText = '3 px';
+
+            document.getElementById('threshType').value = 'otsu';
+            document.getElementById('threshBadge').innerText = 'Otsu';
+            document.getElementById('manualThreshContainer').classList.add('hidden');
+
+            document.getElementById('threshVal').value = 127;
+            document.getElementById('threshValNum').innerText = '127';
+
+            document.getElementById('morphType').value = 'none';
+            document.getElementById('morphBadge').innerText = 'NONE';
+
+            document.getElementById('morphKernel').value = 3;
+            document.getElementById('morphKernelVal').innerText = '3x3';
+
+            document.getElementById('scaleFactor').value = 1.1;
+            document.getElementById('scaleFactorVal').innerText = '1.1';
+
+            document.getElementById('minNeighbors').value = 3;
+            document.getElementById('minNeighborsVal').innerText = '3';
+
+            if (sourceMode === 'upload') processImagePipeline();
+        }
+
+        // Core Pipeline Function for Single Image / Frame
+        function processPipelineCore(sourceElement) {
+            if (!cvReady) return;
+
+            const startTime = performance.now();
+
+            // 1. Read input image frame into Mat
+            if (!srcMat) srcMat = new cv.Mat();
+            if (!grayMat) grayMat = new cv.Mat();
+            if (!blurMat) blurMat = new cv.Mat();
+            if (!threshMat) threshMat = new cv.Mat();
+            if (!morphMat) morphMat = new cv.Mat();
+            if (!dstMat) dstMat = new cv.Mat();
+
+            // Capture Frame
+            if (sourceElement instanceof HTMLVideoElement) {
+                // Synchronize preview canvas
+                canvasInputPreview.width = sourceElement.videoWidth;
+                canvasInputPreview.height = sourceElement.videoHeight;
+                let ctx = canvasInputPreview.getContext('2d');
+                ctx.drawImage(sourceElement, 0, 0);
+            }
+
+            srcMat = cv.imread(canvasInputPreview);
+            srcMat.copyTo(dstMat);
+
+            // --- STAGE 1: Grayscale & Blur ---
+            cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
+            let kSize = parseInt(document.getElementById('blurKernel').value);
+            if (kSize % 2 === 0) kSize += 1; // Ensure odd kernel
+            cv.GaussianBlur(grayMat, blurMat, new cv.Size(kSize, kSize), 0, 0, cv.BORDER_DEFAULT);
+            cv.imshow('canvasGray', blurMat);
+
+            // --- STAGE 2: Thresholding ---
+            const threshType = document.getElementById('threshType').value;
+            const threshVal = parseFloat(document.getElementById('threshVal').value);
+
+            if (threshType === 'otsu') {
+                cv.threshold(blurMat, threshMat, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU);
+            } else if (threshType === 'adaptive') {
+                cv.adaptiveThreshold(blurMat, threshMat, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2);
+            } else if (threshType === 'binary') {
+                cv.threshold(blurMat, threshMat, threshVal, 255, cv.THRESH_BINARY);
+            } else {
+                // No threshold (Grayscale fallback)
+                blurMat.copyTo(threshMat);
+            }
+            cv.imshow('canvasThresh', threshMat);
+
+            // --- STAGE 3: Morphological Operations ---
+            const morphType = document.getElementById('morphType').value;
+            const morphKSize = parseInt(document.getElementById('morphKernel').value);
+            
+            if (morphType !== 'none') {
+                let M = cv.Mat.ones(morphKSize, morphKSize, cv.CV_8U);
+                let op = cv.MORPH_ERODE;
+
+                if (morphType === 'opening') op = cv.MORPH_OPEN;
+                else if (morphType === 'closing') op = cv.MORPH_CLOSE;
+                else if (morphType === 'erode') op = cv.MORPH_ERODE;
+                else if (morphType === 'dilate') op = cv.MORPH_DILATE;
+
+                cv.morphologyEx(threshMat, morphMat, op, M);
+                M.delete();
+            } else {
+                threshMat.copyTo(morphMat);
+            }
+            cv.imshow('canvasMorph', morphMat);
+
+            // --- STAGE 4: Object / Face Detection via Haar Cascade ---
+            // Note: Haar Cascade operates best on Grayscale image (or optimized morphological binary image)
+            let faces = new cv.RectVector();
+            const scaleFactor = parseFloat(document.getElementById('scaleFactor').value);
+            const minNeighbors = parseInt(document.getElementById('minNeighbors').value);
+
+            // Perform detection on the morphologically processed image or grayscale image
+            // Note: Morphological features can be used for custom blob detection, 
+            // but here we feed the optimized channel to Haar Cascade.
+            faceCascade.detectMultiScale(blurMat, faces, scaleFactor, minNeighbors, 0);
+
+            // Draw bounding boxes on Final Canvas
+            document.getElementById('detectedCount').innerText = faces.size();
+
+            for (let i = 0; i < faces.size(); ++i) {
+                let face = faces.get(i);
+                let point1 = new cv.Point(face.x, face.y);
+                let point2 = new cv.Point(face.x + face.width, face.y + face.height);
+                
+                // Draw Cyan Bounding Box
+                cv.rectangle(dstMat, point1, point2, [6, 182, 212, 255], 2);
+
+                // Draw Text Label
+                cv.putText(dstMat, `Face #${i+1}`, new cv.Point(face.x, face.y - 8), 
+                           cv.FONT_HERSHEY_SIMPLEX, 0.5, [6, 182, 212, 255], 1.5);
+            }
+
+            cv.imshow('canvasOutput', dstMat);
+
+            // Clean up temporary rect vector
+            faces.delete();
+
+            // Calculate execution time
+            const elapsedTime = performance.now() - startTime;
+            document.getElementById('procTimeVal').innerText = `${Math.round(elapsedTime)} ms`;
+        }
+
+        // Loop execution for Webcam Stream
+        function processVideoFrame() {
+            if (!streaming || sourceMode !== 'webcam') return;
+
+            // Calculate FPS
+            const now = performance.now();
+            frameCount++;
+            if (now - lastFrameTime >= 1000) {
+                currentFps = frameCount;
+                frameCount = 0;
+                lastFrameTime = now;
+                document.getElementById('fpsVal').innerText = currentFps;
+            }
+
+            processPipelineCore(video);
+
+            // Trigger next frame
+            requestAnimationFrame(processVideoFrame);
+        }
+
+        // Single execution for Uploaded Image
+        function processImagePipeline() {
+            if (sourceMode !== 'upload') return;
+            document.getElementById('fpsVal').innerText = 'N/A';
+            processPipelineCore(imgInput);
+        }
+
+        // UI Notification Toast
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMsg.innerText = message;
+            if (type === 'error') {
+                toastIcon.className = "fa-solid fa-circle-exclamation text-rose-500";
+            } else if (type === 'success') {
+                toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+            } else {
+                toastIcon.className = "fa-solid fa-circle-info text-cyan-400";
+            }
+
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
