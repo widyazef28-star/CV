@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Computer Vision & Marker Segmentation Engine</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- TensorFlow.js & COCO-SSD CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+    <!-- Google Fonts Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        cyber: {
+                            bg: '#080C14',
+                            card: '#101726',
+                            cardBorder: '#1E293B',
+                            neonGreen: '#10B981',
+                            neonCyan: '#06B6D4',
+                            neonPurple: '#8B5CF6',
+                            neonPink: '#EC4899',
+                            neonYellow: '#F59E0B',
+                            alert: '#EF4444'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #080C14;
+            color: #F3F4F6;
+            font-family: 'Inter', sans-serif;
+        }
+        .hud-border {
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.08);
+        }
+        .hud-glow-green {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+        .glass-panel {
+            background: rgba(16, 23, 38, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(30, 41, 59, 0.8);
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #080C14;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1E293B;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #06B6D4;
+        }
+        input[type=range] {
+            accent-color: #06B6D4;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col overflow-x-hidden">
+
+    <!-- Header / Navbar -->
+    <header class="glass-panel sticky top-0 z-50 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-cyan-500/10 rounded-xl border border-cyan-500/30 text-cyan-400">
+                    <i data-lucide="scan-face" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-white flex items-center gap-2">
+                        VISION-AI PRO <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono">TF.JS + HSV</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Object Detection & Marker Segmentation Engine</p>
+                </div>
+            </div>
+
+            <!-- Model Status Indicator & Stats -->
+            <div class="flex items-center gap-3 text-xs font-mono">
+                <div id="modelStatusBadge" class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-lg text-amber-400">
+                    <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
+                    <span>Memuat AI Model...</span>
+                </div>
+                <div class="hidden sm:flex items-center gap-2 bg-cyber-bg px-3 py-1.5 rounded-lg border border-cyber-cardBorder">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span class="text-slate-400">FPS:</span>
+                    <span id="fpsDisplay" class="text-emerald-400 font-bold">0</span>
+                </div>
+                <div class="hidden md:flex items-center gap-2 bg-cyber-bg px-3 py-1.5 rounded-lg border border-cyber-cardBorder">
+                    <i data-lucide="activity" class="w-3.5 h-3.5 text-cyan-400"></i>
+                    <span class="text-slate-400">Latensi:</span>
+                    <span id="latencyDisplay" class="text-cyan-400 font-bold">0 ms</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Controls Sidebar (4 Columns) -->
+        <aside class="lg:col-span-4 space-y-5">
+
+            <!-- Input Mode Selector -->
+            <div class="glass-panel rounded-2xl p-4 space-y-3">
+                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <i data-lucide="video" class="w-4 h-4 text-cyan-400"></i> Sumber Input Media
+                </h2>
+                <div class="grid grid-cols-3 gap-2">
+                    <button id="btnSourceWebcam" class="flex flex-col items-center justify-center p-2.5 rounded-xl bg-cyan-600/30 border border-cyan-500 text-cyan-300 font-medium text-xs transition hover:bg-cyan-600/40">
+                        <i data-lucide="camera" class="w-4 h-4 mb-1"></i> Kamera
+                    </button>
+                    <label class="flex flex-col items-center justify-center p-2.5 rounded-xl bg-cyber-bg border border-cyber-cardBorder text-slate-300 font-medium text-xs transition hover:bg-slate-800 cursor-pointer text-center">
+                        <i data-lucide="image" class="w-4 h-4 mb-1 text-slate-400"></i> Gambar
+                        <input type="file" id="imageLoader" accept="image/*" class="hidden">
+                    </label>
+                    <label class="flex flex-col items-center justify-center p-2.5 rounded-xl bg-cyber-bg border border-cyber-cardBorder text-slate-300 font-medium text-xs transition hover:bg-slate-800 cursor-pointer text-center">
+                        <i data-lucide="film" class="w-4 h-4 mb-1 text-slate-400"></i> Video
+                        <input type="file" id="videoLoader" accept="video/*" class="hidden">
+                    </label>
+                </div>
+
+                <button id="btnToggleCamera" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 font-semibold text-xs hover:bg-emerald-600/30 transition flex items-center justify-center gap-2">
+                    <i data-lucide="play" class="w-4 h-4"></i> Mulai Streaming Kamera
+                </button>
+            </div>
+
+            <!-- Class & Filter Engine Controls -->
+            <div class="glass-panel rounded-2xl p-4 space-y-4">
+                <div class="flex items-center justify-between border-b border-cyber-cardBorder pb-2">
+                    <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="filter" class="w-4 h-4 text-cyan-400"></i> Mode Deteksi & Class Filter
+                    </h2>
+                    <button id="btnResetThresholds" class="text-xs text-slate-400 hover:text-cyan-400 transition flex items-center gap-1">
+                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset
+                    </button>
+                </div>
+
+                <!-- Class Filter Dropdown -->
+                <div class="space-y-1.5">
+                    <label class="text-xs text-slate-300 font-medium flex justify-between">
+                        <span>Target Deteksi Class:</span>
+                    </label>
+                    <select id="classFilterSelect" class="w-full bg-cyber-bg border border-cyber-cardBorder text-slate-200 text-xs rounded-xl p-2.5 focus:outline-none focus:border-cyan-500 font-mono">
+                        <option value="all">🔍 Semua Objek (COCO-SSD + Spidol)</option>
+                        <option value="marker_only" selected>🖊️ Spidol / Marker Pen Sahaja</option>
+                        <option value="bottle">🍾 Botol / Bottle</option>
+                        <option value="cup">☕ Cangkir / Cup</option>
+                        <option value="cell phone">📱 Smartphone / Phone</option>
+                        <option value="person">👤 Manusia / Person</option>
+                    </select>
+                </div>
+
+                <!-- Detection Threshold Slider -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300">Confidence Threshold (AI):</span>
+                        <span id="valConfidence" class="font-mono text-cyan-400 font-bold">45%</span>
+                    </div>
+                    <input type="range" id="sliderConfidence" min="10" max="95" value="45" class="w-full h-1.5 bg-cyber-bg rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Segmentation Sensitivity Threshold -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300">Sensitivitas Segmentasi Spidol:</span>
+                        <span id="valSensitivity" class="font-mono text-cyan-400 font-bold">45</span>
+                    </div>
+                    <input type="range" id="sliderSensitivity" min="10" max="90" value="45" class="w-full h-1.5 bg-cyber-bg rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Color Presets for Markers -->
+                <div class="space-y-1.5 pt-1">
+                    <label class="text-xs text-slate-300 font-medium block">Filter Target Warna Spidol:</label>
+                    <div class="grid grid-cols-4 gap-1.5">
+                        <button data-color="all" class="btn-color-preset bg-cyan-500/30 text-cyan-300 border border-cyan-500 text-xs py-1.5 rounded-lg font-medium text-center">Semua</button>
+                        <button data-color="blue" class="btn-color-preset bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs py-1.5 rounded-lg font-medium text-center hover:bg-blue-500/20">Biru</button>
+                        <button data-color="red" class="btn-color-preset bg-red-500/10 text-red-400 border border-red-500/20 text-xs py-1.5 rounded-lg font-medium text-center hover:bg-red-500/20">Merah</button>
+                        <button data-color="black" class="btn-color-preset bg-slate-700/30 text-slate-300 border border-slate-600/30 text-xs py-1.5 rounded-lg font-medium text-center hover:bg-slate-700/50">Hitam</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Display Overlay Toggles -->
+            <div class="glass-panel rounded-2xl p-4 space-y-3">
+                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <i data-lucide="layers" class="w-4 h-4 text-cyan-400"></i> Visual Layer HUD
+                </h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-cyber-bg/60 p-2 rounded-xl border border-cyber-cardBorder">
+                        <input type="checkbox" id="chkBox" checked class="rounded bg-cyber-bg border-cyber-cardBorder text-cyan-500 focus:ring-0">
+                        <span>Bounding Box</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-cyber-bg/60 p-2 rounded-xl border border-cyber-cardBorder">
+                        <input type="checkbox" id="chkMask" checked class="rounded bg-cyber-bg border-cyber-cardBorder text-cyan-500 focus:ring-0">
+                        <span>Mask Segmentasi</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-cyber-bg/60 p-2 rounded-xl border border-cyber-cardBorder">
+                        <input type="checkbox" id="chkKeypoints" checked class="rounded bg-cyber-bg border-cyber-cardBorder text-cyan-500 focus:ring-0">
+                        <span>Centroid Keypoints</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-cyber-bg/60 p-2 rounded-xl border border-cyber-cardBorder">
+                        <input type="checkbox" id="chkLabels" checked class="rounded bg-cyber-bg border-cyber-cardBorder text-cyan-500 focus:ring-0">
+                        <span>Label & Skor %</span>
+                    </label>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- Right Main Workspace (8 Columns) -->
+        <section class="lg:col-span-8 space-y-5">
+
+            <!-- Primary Vision Viewport Canvas -->
+            <div class="glass-panel rounded-2xl p-4 hud-border relative">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+                        <h2 class="text-xs font-bold text-white tracking-widest uppercase font-mono">Real-Time Computer Vision Viewport</h2>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="btnCapture" class="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold hover:bg-cyan-500/20 transition flex items-center gap-1.5">
+                            <i data-lucide="camera" class="w-3.5 h-3.5"></i> Capture
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Video & Render Canvas Container -->
+                <div id="viewportContainer" class="relative w-full aspect-video bg-black/90 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                    
+                    <video id="webcamVideo" autoplay playsinline muted class="hidden"></video>
+                    <canvas id="outputCanvas" class="w-full h-full object-contain"></canvas>
+
+                    <!-- Tactical HUD Corner Brackets -->
+                    <div class="absolute top-3 left-3 border-t-2 border-l-2 border-cyan-500 w-4 h-4 pointer-events-none"></div>
+                    <div class="absolute top-3 right-3 border-t-2 border-r-2 border-cyan-500 w-4 h-4 pointer-events-none"></div>
+                    <div class="absolute bottom-3 left-3 border-b-2 border-l-2 border-cyan-500 w-4 h-4 pointer-events-none"></div>
+                    <div class="absolute bottom-3 right-3 border-b-2 border-r-2 border-cyan-500 w-4 h-4 pointer-events-none"></div>
+
+                    <!-- Placeholder Screen -->
+                    <div id="canvasPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-cyber-bg/95 backdrop-blur-md z-10">
+                        <div class="p-4 bg-cyan-500/10 rounded-full border border-cyan-500/30 mb-3 text-cyan-400">
+                            <i data-lucide="scan" class="w-10 h-10 animate-pulse"></i>
+                        </div>
+                        <h3 class="text-slate-200 font-bold text-base mb-1">Kamera / Media Belum Aktif</h3>
+                        <p class="text-xs text-slate-400 max-w-sm mb-4">Aktifkan kamera streaming atau unggah file foto/video untuk mulai mendeteksi objek & spidol.</p>
+                        <button id="btnStartPlaceholder" class="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl text-xs transition flex items-center gap-2 shadow-lg shadow-cyan-500/20">
+                            <i data-lucide="play" class="w-4 h-4"></i> Aktifkan Kamera
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-3 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                    <span id="resolutionDisplay">Resolusi: -</span>
+                    <span id="statusMessage" class="text-cyan-400">Memuat sistem AI...</span>
+                </div>
+            </div>
+
+            <!-- Analytics & Counter Dashboards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="glass-panel p-4 rounded-2xl hud-glow-green relative overflow-hidden">
+                    <div class="absolute -right-3 -bottom-3 opacity-10 text-emerald-400">
+                        <i data-lucide="pen-tool" class="w-24 h-24"></i>
+                    </div>
+                    <span class="text-[11px] text-slate-400 uppercase font-semibold tracking-wider">Spidol Terdeteksi</span>
+                    <div id="markerCountBig" class="text-3xl font-extrabold text-emerald-400 font-mono mt-1">0</div>
+                    <p class="text-[10px] text-slate-500 mt-1">Segmentasi Marker Pen</p>
+                </div>
+
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden">
+                    <div class="absolute -right-3 -bottom-3 opacity-10 text-cyan-400">
+                        <i data-lucide="boxes" class="w-24 h-24"></i>
+                    </div>
+                    <span class="text-[11px] text-slate-400 uppercase font-semibold tracking-wider">Total Objek Terdeteksi</span>
+                    <div id="totalObjectCountBig" class="text-3xl font-extrabold text-cyan-400 font-mono mt-1">0</div>
+                    <p class="text-[10px] text-slate-500 mt-1">Model COCO-SSD + Color CV</p>
+                </div>
+
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden">
+                    <div class="absolute -right-3 -bottom-3 opacity-10 text-purple-400">
+                        <i data-lucide="award" class="w-24 h-24"></i>
+                    </div>
+                    <span class="text-[11px] text-slate-400 uppercase font-semibold tracking-wider">Rata-rata Skor Conf</span>
+                    <div id="avgConfidence" class="text-3xl font-extrabold text-purple-400 font-mono mt-1">0%</div>
+                    <p class="text-[10px] text-slate-500 mt-1">Tingkat Kepastian AI</p>
+                </div>
+            </div>
+
+            <!-- Detection Log Feed & Export Controls -->
+            <div class="glass-panel rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="list" class="w-4 h-4 text-cyan-400"></i> Log Aktivitas Deteksi Computer Vision
+                    </h2>
+                    <div class="flex items-center gap-2">
+                        <button id="btnExportCSV" class="text-[11px] px-2.5 py-1 rounded-lg bg-cyber-bg border border-cyber-cardBorder text-slate-300 hover:text-cyan-400 hover:border-cyan-500/50 transition flex items-center gap-1">
+                            <i data-lucide="download" class="w-3 h-3"></i> CSV
+                        </button>
+                        <button id="btnExportJSON" class="text-[11px] px-2.5 py-1 rounded-lg bg-cyber-bg border border-cyber-cardBorder text-slate-300 hover:text-cyan-400 hover:border-cyan-500/50 transition flex items-center gap-1">
+                            <i data-lucide="file-json" class="w-3 h-3"></i> JSON
+                        </button>
+                        <button id="btnClearLog" class="text-[11px] text-slate-400 hover:text-red-400 transition ml-1">Clear</button>
+                    </div>
+                </div>
+                <div id="logList" class="h-32 overflow-y-auto space-y-1.5 font-mono text-xs pr-2">
+                    <div class="p-2 bg-cyber-bg/50 rounded-xl border border-slate-800/80 text-slate-400">
+                        [<span class="text-slate-500">SYSTEM</span>] Menginisialisasi Tensorflow.js & Model COCO-SSD...
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass-panel py-3 text-center text-xs text-slate-500 mt-auto border-t border-cyber-cardBorder">
+        AI Computer Vision & Marker Segmentation Engine &bull; Dual AI Neural Net + Custom Segmentor
+    </footer>
+
+    <!-- Main JavaScript Logic -->
+    <script>
+        // Inisialisasi Lucide Icons
+        lucide.createIcons();
+
+        // Canvas & UI Elements
+        const video = document.getElementById('webcamVideo');
+        const canvas = document.getElementById('outputCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const canvasPlaceholder = document.getElementById('canvasPlaceholder');
+        const btnToggleCamera = document.getElementById('btnToggleCamera');
+        const btnStartPlaceholder = document.getElementById('btnStartPlaceholder');
+        const imageLoader = document.getElementById('imageLoader');
+        const videoLoader = document.getElementById('videoLoader');
+        const btnCapture = document.getElementById('btnCapture');
+        const modelStatusBadge = document.getElementById('modelStatusBadge');
+
+        // Counters & Displays
+        const fpsDisplay = document.getElementById('fpsDisplay');
+        const latencyDisplay = document.getElementById('latencyDisplay');
+        const markerCountBig = document.getElementById('markerCountBig');
+        const totalObjectCountBig = document.getElementById('totalObjectCountBig');
+        const avgConfidence = document.getElementById('avgConfidence');
+        const resolutionDisplay = document.getElementById('resolutionDisplay');
+        const statusMessage = document.getElementById('statusMessage');
+        const logList = document.getElementById('logList');
+
+        // Filter Controls
+        const classFilterSelect = document.getElementById('classFilterSelect');
+        const sliderConfidence = document.getElementById('sliderConfidence');
+        const sliderSensitivity = document.getElementById('sliderSensitivity');
+        const valConfidence = document.getElementById('valConfidence');
+        const valSensitivity = document.getElementById('valSensitivity');
+
+        // Layer Display Toggles
+        const chkBox = document.getElementById('chkBox');
+        const chkMask = document.getElementById('chkMask');
+        const chkKeypoints = document.getElementById('chkKeypoints');
+        const chkLabels = document.getElementById('chkLabels');
+
+        // Global State
+        let cocoModel = null;
+        let isStreaming = false;
+        let isVideoFilePlaying = false;
+        let activeVideoElement = video;
+        let loadedImage = null;
+        let loadedVideoFile = null;
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+        let selectedPresetColor = 'all';
+        let detectionHistoryLog = [];
+
+        // Engine Parameters
+        let config = {
+            confidenceThreshold: 0.45,
+            sensitivity: 45,
+            minArea: 1000,
+            showBox: true,
+            showMask: true,
+            showKeypoints: true,
+            showLabels: true
+        };
+
+        // Initialize TensorFlow.js COCO-SSD Model
+        async function loadTensorFlowModel() {
+            try {
+                cocoModel = await cocoSsd.load();
+                modelStatusBadge.className = "flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-emerald-400";
+                modelStatusBadge.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i><span>Model AI Siap</span>`;
+                lucide.createIcons();
+                statusMessage.innerText = "Model COCO-SSD + Marker Segmentor Siap.";
+                addLog("Model AI COCO-SSD & Neural Net berhasil dimuat.");
+            } catch (err) {
+                console.error(err);
+                modelStatusBadge.className = "flex items-center gap-2 bg-red-500/10 border border-red-500/30 px-3 py-1.5 rounded-lg text-red-400";
+                modelStatusBadge.innerHTML = `<i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i><span>Model Gagal</span>`;
+                lucide.createIcons();
+                addLog("Gagal memuat AI model, beralih ke Mode Segmentasi Warna saja.", true);
+            }
+        }
+        loadTensorFlowModel();
+
+        // Control Event Listeners
+        sliderConfidence.addEventListener('input', (e) => {
+            config.confidenceThreshold = e.target.value / 100;
+            valConfidence.innerText = `${e.target.value}%`;
+        });
+
+        sliderSensitivity.addEventListener('input', (e) => {
+            config.sensitivity = parseInt(e.target.value);
+            valSensitivity.innerText = e.target.value;
+        });
+
+        chkBox.addEventListener('change', (e) => config.showBox = e.target.checked);
+        chkMask.addEventListener('change', (e) => config.showMask = e.target.checked);
+        chkKeypoints.addEventListener('change', (e) => config.showKeypoints = e.target.checked);
+        chkLabels.addEventListener('change', (e) => config.showLabels = e.target.checked);
+
+        // Marker Color Presets
+        document.querySelectorAll('.btn-color-preset').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.btn-color-preset').forEach(b => {
+                    b.classList.remove('bg-cyan-500/30', 'border-cyan-500', 'text-cyan-300');
+                    b.classList.add('bg-cyber-bg', 'text-slate-400');
+                });
+                e.target.classList.add('bg-cyan-500/30', 'border-cyan-500', 'text-cyan-300');
+                selectedPresetColor = e.target.getAttribute('data-color');
+                addLog(`Target warna spidol diubah ke: <span class="text-cyan-400 font-bold">${selectedPresetColor.toUpperCase()}</span>`);
+            });
+        });
+
+        // Start Webcam
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'environment' }
+                });
+                video.srcObject = stream;
+                await video.play();
+
+                activeVideoElement = video;
+                isStreaming = true;
+                isVideoFilePlaying = false;
+                loadedImage = null;
+                canvasPlaceholder.classList.add('hidden');
+                btnToggleCamera.innerHTML = `<i data-lucide="square" class="w-4 h-4"></i> Hentikan Streaming`;
+                btnToggleCamera.className = "w-full py-2.5 px-3 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 font-semibold text-xs hover:bg-red-600/30 transition flex items-center justify-center gap-2";
+                lucide.createIcons();
+
+                resolutionDisplay.innerText = `Resolusi Kamera: ${video.videoWidth} x ${video.videoHeight}`;
+                statusMessage.innerText = "Streaming kamera aktif...";
+                addLog("Streaming webcam berhasil dimuat.");
+                requestAnimationFrame(processFrameLoop);
+            } catch (err) {
+                alert("Akses kamera gagal: " + err.message);
+                addLog("ERROR: Akses webcam tidak diizinkan.", true);
+            }
+        }
+
+        function stopCamera() {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            isStreaming = false;
+            canvasPlaceholder.classList.remove('hidden');
+            btnToggleCamera.innerHTML = `<i data-lucide="play" class="w-4 h-4"></i> Mulai Streaming Kamera`;
+            btnToggleCamera.className = "w-full py-2.5 px-3 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 font-semibold text-xs hover:bg-emerald-600/30 transition flex items-center justify-center gap-2";
+            lucide.createIcons();
+            statusMessage.innerText = "Kamera nonaktif.";
+            addLog("Streaming kamera dihentikan.");
+        }
+
+        btnToggleCamera.addEventListener('click', () => {
+            if (isStreaming) stopCamera();
+            else startCamera();
+        });
+        btnStartPlaceholder.addEventListener('click', startCamera);
+
+        // Upload Static Image Handler
+        imageLoader.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (isStreaming) stopCamera();
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    loadedImage = img;
+                    isVideoFilePlaying = false;
+                    canvasPlaceholder.classList.add('hidden');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    resolutionDisplay.innerText = `Resolusi Foto: ${img.width} x ${img.height}`;
+                    statusMessage.innerText = "Memproses deteksi foto...";
+                    addLog(`Foto dimuat: ${file.name}`);
+                    processSingleFrame(img);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Upload Video File Handler
+        videoLoader.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (isStreaming) stopCamera();
+
+            const videoURL = URL.createObjectURL(file);
+            loadedVideoFile = document.createElement('video');
+            loadedVideoFile.src = videoURL;
+            loadedVideoFile.autoplay = true;
+            loadedVideoFile.loop = true;
+            loadedVideoFile.muted = true;
+            loadedVideoFile.playsInline = true;
+
+            loadedVideoFile.onloadeddata = () => {
+                activeVideoElement = loadedVideoFile;
+                loadedVideoFile.play();
+                isStreaming = true;
+                isVideoFilePlaying = true;
+                loadedImage = null;
+                canvasPlaceholder.classList.add('hidden');
+                resolutionDisplay.innerText = `Resolusi Video: ${loadedVideoFile.videoWidth} x ${loadedVideoFile.videoHeight}`;
+                statusMessage.innerText = "Pemutaran file video aktif...";
+                addLog(`File video dimuat: ${file.name}`);
+                requestAnimationFrame(processFrameLoop);
+            };
+        });
+
+        // Marker Custom HSV/Color Segmentation Engine
+        function detectMarkersInImageData(imgData, width, height) {
+            const data = imgData.data;
+            const visited = new Uint8Array(width * height);
+            const maskMap = new Uint8Array(width * height);
+            const detections = [];
+
+            for (let y = 0; y < height; y += 2) {
+                for (let x = 0; x < width; x += 2) {
+                    const idx = (y * width + x) * 4;
+                    const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+                    const [h, s, v] = rgbToHsv(r, g, b);
+
+                    let isMarker = false;
+                    const isBlue = (h >= 190 && h <= 250 && s >= 0.35 && v >= 0.2);
+                    const isRed = ((h <= 15 || h >= 340) && s >= 0.40 && v >= 0.2);
+                    const isDarkBody = (s < 0.25 && v > 0.15 && v < 0.65);
+
+                    if (selectedPresetColor === 'blue' && isBlue) isMarker = true;
+                    else if (selectedPresetColor === 'red' && isRed) isMarker = true;
+                    else if (selectedPresetColor === 'black' && isDarkBody) isMarker = true;
+                    else if (selectedPresetColor === 'all' && (isBlue || isRed || isDarkBody)) isMarker = true;
+
+                    if (isMarker) maskMap[y * width + x] = 1;
+                }
+            }
+
+            // Region Clustering
+            const gridStep = 4;
+            for (let y = 0; y < height; y += gridStep) {
+                for (let x = 0; x < width; x += gridStep) {
+                    const pos = y * width + x;
+                    if (maskMap[pos] === 1 && !visited[pos]) {
+                        let minX = x, maxX = x, minY = y, maxY = y;
+                        let count = 0;
+                        const queue = [[x, y]];
+                        visited[pos] = 1;
+
+                        while (queue.length > 0 && queue.length < 800) {
+                            const [cx, cy] = queue.pop();
+                            count++;
+                            if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+                            if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+
+                            const nbs = [[cx + gridStep, cy], [cx - gridStep, cy], [cx, cy + gridStep], [cx, cy - gridStep]];
+                            for (let i = 0; i < nbs.length; i++) {
+                                const [nx, ny] = nbs[i];
+                                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                                    const nPos = ny * width + nx;
+                                    if (maskMap[nPos] === 1 && !visited[nPos]) {
+                                        visited[nPos] = 1;
+                                        queue.push([nx, ny]);
+                                    }
+                                }
+                            }
+                        }
+
+                        const bw = maxX - minX;
+                        const bh = maxY - minY;
+                        const area = bw * bh;
+                        const aspect = Math.max(bw, bh) / (Math.min(bw, bh) || 1);
+
+                        if (area >= config.minArea && aspect >= 1.2) {
+                            const conf = Math.min(0.97, 0.45 + (aspect * 0.08) + (count / (area + 1) * 0.3));
+                            if (conf >= config.confidenceThreshold) {
+                                detections.push({
+                                    class: 'Spidol / Marker Pen',
+                                    bbox: [minX, minY, bw, bh],
+                                    score: conf,
+                                    isMarker: true
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            return detections;
+        }
+
+        function rgbToHsv(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, v = max;
+            const d = max - min;
+            s = max === 0 ? 0 : d / max;
+            if (max === min) h = 0;
+            else {
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return [h * 360, s, v];
+        }
+
+        // Processing Loop Frame
+        async function processFrameLoop() {
+            if (!isStreaming) return;
+
+            const startTime = performance.now();
+
+            if (canvas.width !== activeVideoElement.videoWidth || canvas.height !== activeVideoElement.videoHeight) {
+                canvas.width = activeVideoElement.videoWidth || 640;
+                canvas.height = activeVideoElement.videoHeight || 360;
+            }
+
+            ctx.drawImage(activeVideoElement, 0, 0, canvas.width, canvas.height);
+            await processCurrentFrameDetections();
+
+            const endTime = performance.now();
+            latencyDisplay.innerText = `${Math.round(endTime - startTime)} ms`;
+
+            frameCount++;
+            if (endTime - lastFrameTime >= 1000) {
+                fpsDisplay.innerText = frameCount;
+                frameCount = 0;
+                lastFrameTime = endTime;
+            }
+
+            requestAnimationFrame(processFrameLoop);
+        }
+
+        async function processSingleFrame(sourceMedia) {
+            const startTime = performance.now();
+            ctx.drawImage(sourceMedia, 0, 0, canvas.width, canvas.height);
+            await processCurrentFrameDetections();
+            latencyDisplay.innerText = `${Math.round(performance.now() - startTime)} ms`;
+            fpsDisplay.innerText = 'N/A';
+        }
+
+        // Combined AI + Color Segmentation Engine
+        async function processCurrentFrameDetections() {
+            let combinedDetections = [];
+            const filterClass = classFilterSelect.value;
+
+            // 1. Color-based Marker Segmentation Engine
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const markerDetections = detectMarkersInImageData(imgData, canvas.width, canvas.height);
+
+            if (filterClass === 'all' || filterClass === 'marker_only') {
+                combinedDetections = combinedDetections.concat(markerDetections);
+            }
+
+            // 2. TensorFlow COCO-SSD Object Detection AI Engine
+            if (cocoModel && filterClass !== 'marker_only') {
+                const predictions = await cocoModel.detect(canvas);
+                predictions.forEach(pred => {
+                    if (pred.score >= config.confidenceThreshold) {
+                        if (filterClass === 'all' || filterClass === pred.class) {
+                            combinedDetections.push({
+                                class: pred.class,
+                                bbox: pred.bbox,
+                                score: pred.score,
+                                isMarker: false
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Render HUD Annotations
+            renderHUDAnnotations(combinedDetections);
+            updateDashboardMetrics(combinedDetections);
+        }
+
+        // Draw HUD Layer
+        function renderHUDAnnotations(detections) {
+            detections.forEach((det, idx) => {
+                const [x, y, w, h] = det.bbox;
+                const confPercent = Math.round(det.score * 100);
+                const isMarker = det.isMarker;
+
+                // Color Themes
+                const strokeColor = isMarker ? '#10B981' : '#06B6D4'; // Green for Marker, Cyan for Objects
+                const fillColor = isMarker ? 'rgba(16, 185, 129, 0.2)' : 'rgba(6, 182, 212, 0.18)';
+
+                // 1. Mask Overlay
+                if (config.showMask) {
+                    ctx.save();
+                    ctx.fillStyle = fillColor;
+                    ctx.strokeStyle = strokeColor;
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.roundRect(x + 2, y + 2, w - 4, h - 4, 6);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // 2. Bounding Box
+                if (config.showBox) {
+                    ctx.save();
+                    ctx.strokeStyle = strokeColor;
+                    ctx.lineWidth = 2;
+                    ctx.shadowColor = strokeColor;
+                    ctx.shadowBlur = 6;
+
+                    // Tactical Corner Box Lines
+                    const l = Math.min(w, h) * 0.2;
+                    ctx.beginPath(); ctx.moveTo(x, y + l); ctx.lineTo(x, y); ctx.lineTo(x + l, y); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(x + w - l, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + l); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(x, y + h - l); ctx.lineTo(x, y + h); ctx.lineTo(x + l, y + h); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(x + w - l, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - l); ctx.stroke();
+                    ctx.restore();
+                }
+
+                // 3. Labels
+                if (config.showLabels) {
+                    ctx.save();
+                    const labelText = `${det.class.toUpperCase()} (${confPercent}%)`;
+                    ctx.font = 'bold 11px "JetBrains Mono", monospace';
+                    const textWidth = ctx.measureText(labelText).width;
+
+                    ctx.fillStyle = strokeColor;
+                    ctx.fillRect(x, y - 20, textWidth + 10, 20);
+
+                    ctx.fillStyle = '#080C14';
+                    ctx.fillText(labelText, x + 5, y - 5);
+                    ctx.restore();
+                }
+
+                // 4. Centroid Keypoint
+                if (config.showKeypoints) {
+                    ctx.save();
+                    const cx = x + w / 2;
+                    const cy = y + h / 2;
+
+                    ctx.strokeStyle = '#EC4899';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.fillStyle = strokeColor;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            });
+        }
+
+        // Metrics & Log History
+        let lastLoggedCount = -1;
+        function updateDashboardMetrics(detections) {
+            const totalCount = detections.length;
+            const markerCount = detections.filter(d => d.isMarker).length;
+
+            markerCountBig.innerText = markerCount;
+            totalObjectCountBig.innerText = totalCount;
+
+            if (totalCount > 0) {
+                const totalScore = detections.reduce((acc, curr) => acc + curr.score, 0);
+                avgConfidence.innerText = `${Math.round((totalScore / totalCount) * 100)}%`;
+            } else {
+                avgConfidence.innerText = '0%';
+            }
+
+            // Record Log on change
+            if (totalCount !== lastLoggedCount) {
+                if (totalCount > 0) {
+                    const time = new Date().toLocaleTimeString();
+                    const logEntry = { timestamp: time, total: totalCount, markers: markerCount, classes: detections.map(d => d.class) };
+                    detectionHistoryLog.unshift(logEntry);
+                    addLog(`Deteksi aktif: <span class="text-cyan-400 font-bold">${totalCount} objek</span> (${markerCount} spidol)`);
+                }
+                lastLoggedCount = totalCount;
+            }
+        }
+
+        function addLog(msg, isError = false) {
+            const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
+            const item = document.createElement('div');
+            item.className = `p-2 rounded-xl border ${isError ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-cyber-bg/60 border-slate-800 text-slate-300'}`;
+            item.innerHTML = `[<span class="text-slate-500">${time}</span>] ${msg}`;
+            logList.prepend(item);
+        }
+
+        document.getElementById('btnClearLog').addEventListener('click', () => {
+            logList.innerHTML = '';
+            detectionHistoryLog = [];
+            addLog("Log riwayat dibersihkan.");
+        });
+
+        // Export Log Functions
+        document.getElementById('btnExportCSV').addEventListener('click', () => {
+            if (detectionHistoryLog.length === 0) return alert("Belum ada data log untuk diekspor!");
+            let csv = "Timestamp,Total Objects,Markers Count,Detected Classes\n";
+            detectionHistoryLog.forEach(row => {
+                csv += `"${row.timestamp}",${row.total},${row.markers},"${row.classes.join(', ')}"\n`;
+            });
+            downloadFile(csv, 'detection-log.csv', 'text/csv');
+        });
+
+        document.getElementById('btnExportJSON').addEventListener('click', () => {
+            if (detectionHistoryLog.length === 0) return alert("Belum ada data log untuk diekspor!");
+            downloadFile(JSON.stringify(detectionHistoryLog, null, 2), 'detection-log.json', 'application/json');
+        });
+
+        function downloadFile(content, fileName, contentType) {
+            const a = document.createElement('a');
+            const file = new Blob([content], { type: contentType });
+            a.href = URL.createObjectURL(file);
+            a.download = fileName;
+            a.click();
+            addLog(`Ekspor file ${fileName} berhasil.`);
+        }
+
+        // Capture Canvas Snapshot
+        btnCapture.addEventListener('click', () => {
+            if (!isStreaming && !loadedImage) return alert("Aktifkan kamera atau media foto!");
+            const link = document.createElement('a');
+            link.download = `computer-vision-snapshot-${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            addLog("Snapshot viewport berhasil diunduh.");
+        });
+
+        document.getElementById('btnResetThresholds').addEventListener('click', () => {
+            sliderConfidence.value = 45;
+            sliderSensitivity.value = 45;
+            config.confidenceThreshold = 0.45;
+            config.sensitivity = 45;
+            valConfidence.innerText = "45%";
+            valSensitivity.innerText = "45";
+            classFilterSelect.value = "marker_only";
+            addLog("Parameter threshold & filter dikembalikan ke awal.");
+        });
+    </script>
+</body>
+</html>
